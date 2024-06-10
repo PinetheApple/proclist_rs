@@ -2,5 +2,5 @@
 name="proclist_rust"
 version="0.1.0"
 authors=["pineapple"]
-edition="2024"
+edition="2021"
 description="Program to list processes running on windows"
