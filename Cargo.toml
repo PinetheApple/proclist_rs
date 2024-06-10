@@ -4,3 +4,11 @@ version="0.1.0"
 authors=["pineapple"]
 edition="2021"
 description="Program to list processes running on windows"
+
+[dependencies.windows-sys]
+version="0.52"
+features= [
+    "Win32_System_Diagnostics_ToolHelp",
+    "Win32_System_ProcessStatus",
+    "Win32_Foundation",
+]
