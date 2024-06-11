@@ -1,8 +1,5 @@
-use std::{
-    io::{self, Write},
-    mem::size_of_val,
-    process,
-};
+use std::{mem::size_of_val, process};
+use tabled::{builder::Builder, settings::Style};
 use windows_sys::Win32::{
     Foundation::{CloseHandle, GetLastError, HANDLE, INVALID_HANDLE_VALUE},
     System::{
@@ -42,6 +39,7 @@ fn get_process_list() {
         PagefileUsage: 0,
         PeakPagefileUsage: 0,
     };
+    let mut builder = Builder::default();
 
     unsafe {
         let h_snapshot: HANDLE = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
@@ -61,7 +59,7 @@ fn get_process_list() {
             process::exit(1);
         }
 
-        display_headers();
+        generate_headers(&mut builder);
 
         loop {
             let h_process = OpenProcess(PROCESS_ALL_ACCESS, 0, pe32.th32ProcessID);
@@ -77,7 +75,7 @@ fn get_process_list() {
                     println!("Failed to get information regarding process memory for process with pid {} | Error: {}", pe32.th32ProcessID, GetLastError());
                 }
 
-                display_info(&pe32, priority_class, &pm_counters);
+                add_info(&pe32, priority_class, &pm_counters, &mut builder);
                 CloseHandle(h_process);
             }
 
@@ -85,40 +83,45 @@ fn get_process_list() {
                 break;
             }
         }
+
+        CloseHandle(h_snapshot);
     }
+
+    let output = builder.build().with(Style::psql()).to_string();
+    println!("{}", output);
 }
 
-fn display_info(pe32: &PROCESSENTRY32, priority_class: u32, pmc: &PROCESS_MEMORY_COUNTERS) {
-    print!(
-        "{: <60} {: <6} {: <14} {: <13} {: <16} {: <17} {: <15}",
+fn add_info(
+    pe32: &PROCESSENTRY32,
+    priority_class: u32,
+    pmc: &PROCESS_MEMORY_COUNTERS,
+    builder: &mut Builder,
+) {
+    builder.push_record(vec![
         String::from_utf8(pe32.szExeFile[..].to_vec()).unwrap(),
-        pe32.th32ProcessID,
-        pe32.cntThreads,
-        pe32.th32ParentProcessID,
-        pe32.pcPriClassBase,
-        priority_class,
-        pmc.PageFaultCount
-    );
-    io::stdout().flush().unwrap();
-    display_value(pmc.WorkingSetSize, 11);
-    display_value(pmc.PeakWorkingSetSize, 15);
-    display_value(pmc.PagefileUsage, 14);
-    display_value(pmc.PeakPagefileUsage, 20);
-    println!();
+        pe32.th32ProcessID.to_string(),
+        pe32.cntThreads.to_string(),
+        pe32.th32ParentProcessID.to_string(),
+        pe32.pcPriClassBase.to_string(),
+        priority_class.to_string(),
+        pmc.PageFaultCount.to_string(),
+        get_value_and_unit(pmc.WorkingSetSize),
+        get_value_and_unit(pmc.PeakWorkingSetSize),
+        get_value_and_unit(pmc.PagefileUsage),
+        get_value_and_unit(pmc.PeakPagefileUsage),
+    ])
 }
 
-fn display_value(value_in_bytes: usize, width: u8) {
+fn get_value_and_unit(value_in_bytes: usize) -> String {
     if value_in_bytes > 1048576 {
-        print!("{: <1$}MB", value_in_bytes / 1048576, width as usize);
+        (value_in_bytes / 1048576).to_string() + "MB"
     } else {
-        print!("{: <1$}KB", value_in_bytes / 1024, width as usize);
+        (value_in_bytes / 1024).to_string() + "KB"
     }
-    io::stdout().flush().unwrap();
 }
 
-fn display_headers() {
-    println!(
-        "{: <60} {: <6} {: <14} {: <13} {: <16} {: <17} {: <15} {: <13} {: <17} {: <16} {: <23}",
+fn generate_headers(builder: &mut Builder) {
+    builder.push_record(vec![
         "Process Name",
         "PID",
         "Thread Count",
@@ -129,9 +132,8 @@ fn display_headers() {
         "Mem Usage",
         "Peak Mem Usage",
         "Pagefile Usage",
-        "Peak Pagefile Usage"
-    );
-    println!("=================================================================================================================================================================================================================")
+        "Peak Pagefile Usage",
+    ]);
 }
 
 fn main() {
